@@ -1,0 +1,45 @@
+name: sanity
+# Gold/no-op sanity for round-2 tasks, one job per task on a native x86 runner.
+# Dispatched by eval/cloud.py in the c2c repo; results come back as artifacts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: JSON array of instance ids
+        required: true
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        id: ${{ fromJSON(inputs.ids) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af >/dev/null
+          df -h /
+      - name: Unpack tasks
+        run: gunzip -k eval/fresh/tasks.json.gz
+      - name: Sanity
+        working-directory: eval
+        env:
+          C2C_EVAL_DATASET: fresh/tasks.json
+          PYTHONUNBUFFERED: "1"
+        run: python3 sanity_r2.py "${{ matrix.id }}"
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanity-${{ matrix.id }}
+          path: |
+            eval/results/sanity-r2.json
+            eval/results/sanity-r2-*/multilang/*/report.json
+            eval/results/sanity-r2-*/multilang/*/test_output.log
+          if-no-files-found: warn
