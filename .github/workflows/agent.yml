@@ -1,0 +1,116 @@
+name: agent
+# One agent run per task (pilot.py arm A/C/S), then grading in a separate job.
+# The agent job never sees the gold data: the task file is stripped to what the
+# prompt and workspace need before the agent starts, and the full file is only
+# unpacked in the grade job. Dispatched by eval/cloud.py in the c2c repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: JSON array of instance ids
+        required: true
+      arm:
+        description: pilot.py arm (S = Sonnet probe, A, C)
+        required: true
+      prefix:
+        description: run id prefix (probe, r2)
+        required: true
+      max_parallel:
+        description: concurrent agent runs (they share one plan quota)
+        default: "2"
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # may wait for a 5h quota window before the 90-min run
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel) }}
+      matrix:
+        id: ${{ fromJSON(inputs.ids) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af >/dev/null
+      - name: Install agent CLIs
+        run: npm install -g @anthropic-ai/claude-code@2.1.281 @openai/codex@0.163.0
+      - name: Task file without gold data
+        working-directory: eval
+        run: |
+          python3 - <<'PY'
+          import gzip, json
+          keep = ("instance_id", "repo", "language", "image", "platform", "base_commit", "created_at",
+                  "problem_statement", "env_activate", "sanitize_git", "grader")
+          tasks = json.load(gzip.open("fresh/tasks.json.gz", "rt"))
+          stripped = [dict({k: t[k] for k in keep if k in t}, screening={"decision": t["screening"]["decision"]})
+                      for t in tasks]
+          json.dump(stripped, open("fresh/tasks.json", "w"))
+          PY
+          rm fresh/tasks.json.gz
+          mkdir -p round2 && echo "${{ matrix.id }}" > round2/run.txt
+      - name: Codex login
+        if: inputs.arm == 'C'
+        run: |
+          mkdir -p ~/.codex
+          printf '%s' "$CODEX_AUTH_JSON" > ~/.codex/auth.json
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      - name: Agent run
+        working-directory: eval
+        env:
+          C2C_EVAL_DATASET: fresh/tasks.json
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: >-
+          python3 pilot.py --tasks round2/run.txt --arms "${{ inputs.arm }}" --repeats 1
+          --prefix "${{ inputs.prefix }}" --no-grade --rmi
+      - name: Upload agent output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-${{ inputs.prefix }}-${{ inputs.arm }}-${{ matrix.id }}
+          path: eval/results/
+          if-no-files-found: warn
+
+  grade:
+    needs: agent
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        id: ${{ fromJSON(inputs.ids) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af >/dev/null
+      - name: Unpack tasks
+        run: gunzip -k eval/fresh/tasks.json.gz
+      - uses: actions/download-artifact@v4
+        with:
+          name: agent-${{ inputs.prefix }}-${{ inputs.arm }}-${{ matrix.id }}
+          path: eval/results/
+      - name: Grade
+        working-directory: eval
+        env:
+          C2C_EVAL_DATASET: fresh/tasks.json
+          PYTHONUNBUFFERED: "1"
+        run: |
+          ID="${{ matrix.id }}"
+          RUN="${{ inputs.prefix }}-${ID#*__}-${{ inputs.arm }}-r1"
+          python3 -c "import run; run.pull_images(['$ID'])"
+          python3 pilot.py --grade-existing "$RUN"
+      - name: Upload graded run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ inputs.prefix }}-${{ inputs.arm }}-${{ matrix.id }}
+          path: eval/results/
+          if-no-files-found: warn

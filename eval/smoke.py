@@ -125,8 +125,12 @@ def _retry(read, tries=4):
     return None
 
 
-def snapshot():
-    return {"at": time.time(), "claude": _retry(claude_usage), "codex": _retry(codex_usage)}
+def snapshot(arm=None):
+    """Usage of both plans; an arm that never touches one side skips reading it
+    (a cloud runner may have no login for it)."""
+    claude = _retry(claude_usage) if arm != "B" else None
+    codex = _retry(codex_usage) if arm in (None, "B", "C") else None
+    return {"at": time.time(), "claude": claude, "codex": codex}
 
 
 def wait_for_headroom(side, read):
