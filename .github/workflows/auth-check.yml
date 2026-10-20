@@ -1,0 +1,17 @@
+name: auth-check
+# Checks that the CLAUDE_CODE_OAUTH_TOKEN secret authenticates, with one tiny call.
+
+on: workflow_dispatch
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm install -g @anthropic-ai/claude-code@2.1.281
+      - name: One Haiku call
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          echo "token length: ${#CLAUDE_CODE_OAUTH_TOKEN}"
+          claude -p "Reply with: ok" --model claude-haiku-5-5 --output-format json | tee out.json
+          grep -q '"is_error":false' out.json
