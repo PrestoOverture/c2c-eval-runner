@@ -72,6 +72,7 @@ def main():
     ids = sys.argv[1:] or json.loads(POOL.read_text())
     data = load_dataset()
     done = json.loads(OUT.read_text()) if OUT.exists() else {}
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     todo = sorted((i for i in ids if i not in done), key=lambda i: data[i]["repo"])
     for repo, group in groupby(todo, key=lambda i: data[i]["repo"]):
         group = list(group)
