@@ -12,6 +12,7 @@ where it stopped; --limit runs at most N pending runs (one "batch").
 
 import argparse
 import json
+import os
 import random
 import secrets
 import shutil
@@ -133,6 +134,9 @@ def do_run(inst, arm, run_id, template, grade_now=True):
             sys.exit(f"{run_id}: agent could not authenticate; fix the login and rerun")
         if '"error":"rate_limit"' in log_text or "hit your limit" in log_text:
             sys.exit(f"{run_id}: agent hit the plan's usage limit mid-run; rerun after the reset")
+        # the work container writes into the bind-mounted checkout as root; on a cloud
+        # runner those files can be unreadable to git here, so take ownership back first
+        subprocess.run(["sudo", "-n", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(ws)], capture_output=True)
         patch = smoke.collect_patch(ws, base)
         if (opaque / "c2c-jobs").exists():
             shutil.copytree(opaque / "c2c-jobs", run_dir / "c2c-jobs")
