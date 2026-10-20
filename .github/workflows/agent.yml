@@ -33,8 +33,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/local/share/powershell /usr/local/share/chromium /usr/share/swift /usr/local/.ghcup /opt/az /opt/microsoft /opt/google
           docker system prune -af >/dev/null
+          # large task images (biome/lance/pnpm ~30 GB): put Docker's storage on the bigger of / and /mnt
+          if [ "$(df --output=avail /mnt | tail -1)" -gt "$(df --output=avail / | tail -1)" ]; then
+            sudo systemctl stop docker docker.socket
+            echo '{"data-root": "/mnt/docker"}' | sudo tee /etc/docker/daemon.json >/dev/null
+            sudo systemctl start docker
+          fi
+          df -h / /mnt
       - name: Install agent CLIs
         run: npm install -g @anthropic-ai/claude-code@2.1.281 @openai/codex@0.163.0
       - name: Task file without gold data
@@ -89,8 +97,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/local/share/powershell /usr/local/share/chromium /usr/share/swift /usr/local/.ghcup /opt/az /opt/microsoft /opt/google
           docker system prune -af >/dev/null
+          # large task images (biome/lance/pnpm ~30 GB): put Docker's storage on the bigger of / and /mnt
+          if [ "$(df --output=avail /mnt | tail -1)" -gt "$(df --output=avail / | tail -1)" ]; then
+            sudo systemctl stop docker docker.socket
+            echo '{"data-root": "/mnt/docker"}' | sudo tee /etc/docker/daemon.json >/dev/null
+            sudo systemctl start docker
+          fi
+          df -h / /mnt
       - name: Unpack tasks
         run: gunzip -k eval/fresh/tasks.json.gz
       - uses: actions/download-artifact@v4
