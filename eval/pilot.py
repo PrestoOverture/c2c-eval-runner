@@ -131,6 +131,8 @@ def do_run(inst, arm, run_id, template, grade_now=True):
         if '"error":"authentication_failed"' in log_text:
             # not an agent outcome: leave no run.json so the run stays pending
             sys.exit(f"{run_id}: agent could not authenticate; fix the login and rerun")
+        if '"error":"rate_limit"' in log_text or "hit your limit" in log_text:
+            sys.exit(f"{run_id}: agent hit the plan's usage limit mid-run; rerun after the reset")
         patch = smoke.collect_patch(ws, base)
         if (opaque / "c2c-jobs").exists():
             shutil.copytree(opaque / "c2c-jobs", run_dir / "c2c-jobs")
