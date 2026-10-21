@@ -132,8 +132,10 @@ def do_run(inst, arm, run_id, template, grade_now=True):
         if '"error":"authentication_failed"' in log_text:
             # not an agent outcome: leave no run.json so the run stays pending
             sys.exit(f"{run_id}: agent could not authenticate; fix the login and rerun")
-        if '"error":"rate_limit"' in log_text or "hit your limit" in log_text:
-            sys.exit(f"{run_id}: agent hit the plan's usage limit mid-run; rerun after the reset")
+        jobs_text = "".join(f.read_text(errors="ignore") for f in (opaque / "c2c-jobs").glob("*.json"))
+        if ('"error":"rate_limit"' in log_text or "hit your limit" in log_text
+                or "hit your usage limit" in jobs_text):
+            sys.exit(f"{run_id}: Claude or Codex hit the plan's usage limit mid-run; rerun after the reset")
         # the work container writes into the bind-mounted checkout as root; on a cloud
         # runner those files can be unreadable to git here, so take ownership back first
         subprocess.run(["sudo", "-n", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(ws)], capture_output=True)

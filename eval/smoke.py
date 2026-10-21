@@ -34,6 +34,7 @@ C2C_PACKAGE = "claude2codex@0.3.6"
 
 RUN_CAP_S = 90 * 60
 CLAUDE_START_MAX = 0.85  # a Claude arm waits for the 5h reset only if it would start above this
+CODEX_START_MAX = 0.80  # same for Codex (arm C); a c2c run spends ~7% of the Codex 5h window
 RESET_GUARD_S = 15 * 60  # ...or if the window resets within this long (the 5h delta would be lost)
 
 UNATTENDED = (
@@ -140,7 +141,7 @@ def wait_for_headroom(side, read):
     if not u or "five_hour" not in u:
         return
     w = u["five_hour"]
-    too_full = side == "claude" and w["utilization"] > CLAUDE_START_MAX
+    too_full = w["utilization"] > (CLAUDE_START_MAX if side == "claude" else CODEX_START_MAX)
     resets_mid_run = w["resets_at"] - time.time() < RESET_GUARD_S
     if too_full or resets_mid_run:
         until = w["resets_at"] + 60
